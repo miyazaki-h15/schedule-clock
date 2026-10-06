@@ -57,12 +57,19 @@ button:focus-visible,.filebtn:focus-within,input:focus-visible{outline:2px solid
 input[type=text],input[type=time]{font:inherit;font-size:16px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--field);color:var(--ink);min-width:0;width:100%}
 input[type=time]{width:auto;font-family:var(--num)}
 #editRows .cat{width:9em}
+#catRows li{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+#catRows li:first-child{border-top:0}
+input[type=color]{width:44px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--field);cursor:pointer}
+select{font:inherit;font-size:16px;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--field);color:var(--ink);min-width:0}
+#editRows select{width:9em}
+h2{font-size:14px;margin:16px 0 4px;color:var(--sub);font-weight:700}
+.field{display:flex;gap:10px;align-items:center;font-size:14.5px}
 [hidden]{display:none!important}
 </style>
 </head>
 <body>
 <main>
-  <svg class="dial" viewBox="0 0 440 440" role="img" aria-label="24時間スケジュール時計">
+  <svg class="dial" viewBox="0 0 440 440" role="img" id="dial">
     <g id="segs"></g><g id="ticks"></g>
     <line id="hand" class="hand" x1="220" y1="98" x2="220" y2="22"/>
     <text id="cTime" class="c-time" x="220" y="165"></text>
@@ -72,34 +79,68 @@ input[type=time]{width:auto;font-family:var(--num)}
   </svg>
   <aside>
     <section id="viewPane">
-      <h1>今日の予定</h1>
+      <h1 data-i18n="today"></h1>
       <ol id="list"></ol>
       <div class="tools">
-        <button id="edit" type="button" class="primary">予定を編集</button>
-        <label class="filebtn">Excelから読み込む<input type="file" id="file" accept=".xlsx"></label>
+        <button id="edit" type="button" class="primary" data-i18n="edit"></button>
+        <button id="openSet" type="button" data-i18n="settings"></button>
+        <label class="filebtn"><span data-i18n="excel"></span><input type="file" id="file" accept=".xlsx"></label>
       </div>
       <p class="msg" id="msg" role="status"></p>
     </section>
     <section id="editPane" hidden>
-      <h1>予定を編集</h1>
+      <h1 data-i18n="edit"></h1>
       <ol id="editRows"></ol>
-      <datalist id="cats"></datalist>
       <div class="tools">
-        <button id="add" type="button">予定を追加</button>
-        <button id="save" type="button" class="primary">保存</button>
-        <button id="cancel" type="button">キャンセル</button>
-        <button id="reset" type="button">初期の予定に戻す</button>
+        <button id="add" type="button" data-i18n="add"></button>
+        <button id="save" type="button" class="primary" data-i18n="save"></button>
+        <button id="cancel" type="button" data-i18n="cancel"></button>
+        <button id="reset" type="button" data-i18n="reset"></button>
       </div>
       <p class="msg" id="emsg" role="status"></p>
+    </section>
+    <section id="setPane" hidden>
+      <h1 data-i18n="settings"></h1>
+      <label class="field"><span data-i18n="langLabel"></span>
+        <select id="lang"><option value="ja">日本語</option><option value="en">English</option></select></label>
+      <h2 data-i18n="catTitle"></h2>
+      <ol id="catRows"></ol>
+      <div class="tools">
+        <button id="addCat" type="button" data-i18n="addCat"></button>
+        <button id="saveSet" type="button" class="primary" data-i18n="save"></button>
+        <button id="cancelSet" type="button" data-i18n="cancel"></button>
+      </div>
+      <p class="msg" id="smsg" role="status"></p>
     </section>
   </aside>
 </main>
 <script>
 const DEFAULT=[["睡眠","睡眠",1410,390],["朝食・身支度","食事",390,450],["移動","移動",450,510],["研究","研究",510,720],["昼食","食事",720,780],["研究","研究",780,1080],["運動","運動",1080,1140],["夕食","食事",1140,1200],["風呂","その他",1200,1230],["英語","英語",1230,1290],["自由時間","自由時間",1290,1410]];
 const PAL=["#3d5a80","#2a9d8f","#e9a23b","#8e6fb5","#7a8b99","#d65f5f","#5fa8d3","#b5895a","#6b9e4d","#c46a9a"];
-const KEY="schedule24h";
-let items=DEFAULT.map(x=>[...x]), curIdx=-2;
-try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s&&s.items&&s.items.length)items=s.items;}catch(e){}
+const NOCOL="#9aa7b0", KEY="schedule24h";
+const hf=m=>(Math.abs(m)/60).toFixed(1).replace(/\.0$/,"");
+const I18N={
+ ja:{title:"24時間スケジュール時計",today:"今日の予定",edit:"予定を編集",settings:"設定",excel:"Excelから読み込む",add:"予定を追加",save:"保存",cancel:"キャンセル",
+  reset:"初期状態に戻す",langLabel:"表示言語",catTitle:"カテゴリと色",addCat:"カテゴリを追加",del:"削除",phName:"行動（例：研究）",phCat:"カテゴリ名",noCat:"カテゴリなし",
+  none:"予定なし",aName:"行動",aCat:"カテゴリ",aStart:"開始",aEnd:"終了",aColor:"色",saved:"保存しました",resetDone:"初期状態に戻しました",
+  resetConfirm:"予定とカテゴリを初期状態に戻しますか？",needOne:"予定を1件以上入力してください",catEmpty:"カテゴリ名を入力してください",catDup:"同じ名前のカテゴリがあります",
+  importFail:"読み込めませんでした：",offline:"オフラインのためExcel読み込みは使えません",noHeader:"「行動」の見出し行が見つかりません",noRows:"予定が1件も読み取れませんでした",
+  next:s=>"次は "+s,rem:(h,m,e)=>"あと "+(h?h+"時間":"")+m+"分（"+e+" まで）",badRow:n=>n+"行目：行動名と開始・終了時刻を入力してください",imported:n=>n+"件の予定を読み込みました",
+  total:(t,d)=>"合計 "+hf(t)+"時間"+(d===0?"（ちょうど24時間）":d<0?"（"+hf(d)+"時間 未入力）":"（"+hf(d)+"時間 超過。重なりを確認）")},
+ en:{title:"24-hour schedule clock",today:"Today's schedule",edit:"Edit schedule",settings:"Settings",excel:"Import from Excel",add:"Add item",save:"Save",cancel:"Cancel",
+  reset:"Reset to defaults",langLabel:"Display language",catTitle:"Categories and colors",addCat:"Add category",del:"Delete",phName:"Activity (e.g. Research)",phCat:"Category name",noCat:"No category",
+  none:"Nothing scheduled",aName:"Activity",aCat:"Category",aStart:"Start",aEnd:"End",aColor:"Color",saved:"Saved",resetDone:"Reset to defaults",
+  resetConfirm:"Reset the schedule and categories to defaults?",needOne:"Enter at least one item",catEmpty:"Enter a category name",catDup:"Two categories have the same name",
+  importFail:"Import failed: ",offline:"Excel import needs an internet connection",noHeader:"Header row “行動” not found",noRows:"No items could be read",
+  next:s=>"Next: "+s,rem:(h,m,e)=>(h?h+" h ":"")+m+" min left (until "+e+")",badRow:n=>"Row "+n+": enter a name, start and end time",imported:n=>"Imported "+n+" items",
+  total:(t,d)=>"Total "+hf(t)+" h"+(d===0?" (exactly 24 h)":d<0?" ("+hf(d)+" h unassigned)":" ("+hf(d)+" h over; check overlaps)")}
+};
+let items=DEFAULT.map(x=>[...x]), cats=null, lang=(navigator.language||"ja").startsWith("ja")?"ja":"en", curIdx=-2;
+try{const s=JSON.parse(localStorage.getItem(KEY)||"null");if(s){if(s.items&&s.items.length)items=s.items;if(s.cats)cats=s.cats;if(I18N[s.lang])lang=s.lang;}}catch(e){}
+function nextColor(list){return PAL.find(c=>!list.some(x=>x.color===c))||PAL[list.length%PAL.length];}
+function ensureCats(){cats=cats||[];items.forEach(it=>{if(it[1]&&!cats.some(c=>c.name===it[1]))cats.push({name:it[1],color:nextColor(cats)});});}
+ensureCats();
+let T=I18N[lang];
 const $=id=>document.getElementById(id), NS="http://www.w3.org/2000/svg";
 const el=(tag,props)=>Object.assign(document.createElement(tag),props||{});
 const dur=it=>((it[3]-it[2]+1440)%1440)||1440;
@@ -107,13 +148,18 @@ const hm=m=>Math.floor(m/60)+":"+String(m%60).padStart(2,"0");
 const hm2=m=>String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
 const toMin=v=>{const p=v.split(":");return p.length<2?NaN:(+p[0])*60+(+p[1]);};
 const pt=(min,r)=>{const a=min/1440*2*Math.PI;return [220+r*Math.sin(a),220-r*Math.cos(a)];};
-function store(){try{localStorage.setItem(KEY,JSON.stringify({items}));}catch(e){}}
+const colorOf=name=>{const c=cats.find(c=>c.name===name);return c?c.color:NOCOL;};
+function store(){try{localStorage.setItem(KEY,JSON.stringify({items,cats,lang}));}catch(e){}}
+function applyLang(){
+  T=I18N[lang];document.documentElement.lang=lang;document.title=T.title;$("dial").setAttribute("aria-label",T.title);
+  document.querySelectorAll("[data-i18n]").forEach(e=>e.textContent=T[e.dataset.i18n]);
+}
+function show(id){["viewPane","editPane","setPane"].forEach(p=>$(p).hidden=p!==id);}
 function arc(s,d,ro,ri){
   if(d>=1440) return arc(s,720,ro,ri)+arc(s+720,720,ro,ri);
   const e=s+d,[x1,y1]=pt(s,ro),[x2,y2]=pt(e,ro),[x3,y3]=pt(e,ri),[x4,y4]=pt(s,ri),l=d>720?1:0;
   return `M${x1} ${y1}A${ro} ${ro} 0 ${l} 1 ${x2} ${y2}L${x3} ${y3}A${ri} ${ri} 0 ${l} 0 ${x4} ${y4}Z`;
 }
-function colorMap(){const m={};items.forEach(it=>{const c=it[1]||it[0];if(!(c in m))m[c]=PAL[Object.keys(m).length%PAL.length];});return m;}
 function drawTicks(){
   const g=$("ticks");
   for(let h=0;h<24;h++){
@@ -123,20 +169,20 @@ function drawTicks(){
   }
 }
 function render(idx){
-  const cm=colorMap(),g=$("segs");g.innerHTML="";
+  const g=$("segs");g.innerHTML="";
   items.forEach((it,i)=>{
     const p=document.createElementNS(NS,"path"),on=i===idx;
     p.setAttribute("class","seg");p.setAttribute("d",arc(it[2],dur(it),on?194:186,on?124:130));
-    p.setAttribute("fill",cm[it[1]||it[0]]);p.setAttribute("opacity",on?1:.5);
+    p.setAttribute("fill",colorOf(it[1]));p.setAttribute("opacity",on?1:.5);
     p.setAttribute("stroke","var(--bg)");p.setAttribute("stroke-width",2);
     const t=document.createElementNS(NS,"title");t.textContent=`${it[0]} ${hm(it[2])}–${hm(it[3])}`;p.appendChild(t);g.appendChild(p);
   });
   const ol=$("list");ol.innerHTML="";
   items.forEach((it,i)=>{
     const li=el("li");if(i===idx){li.className="now";li.setAttribute("aria-current","true");}
-    const dot=el("span",{className:"dot"});dot.style.background=cm[it[1]||it[0]];
+    const dot=el("span",{className:"dot",title:it[1]});dot.style.background=colorOf(it[1]);
     li.append(el("span",{className:"t",textContent:hm(it[2])+"–"+hm(it[3])}),dot,el("span",{textContent:it[0]}),
-      el("span",{className:"d",textContent:(dur(it)/60).toFixed(1).replace(/\.0$/,"")+"h"}));
+      el("span",{className:"d",textContent:hf(dur(it))+"h"}));
     ol.appendChild(li);
   });
 }
@@ -146,44 +192,41 @@ function tick(){
   if(idx!==curIdx){curIdx=idx;render(idx);}
   $("hand").setAttribute("transform",`rotate(${sec/86400*360} 220 220)`);
   $("cTime").textContent=[n.getHours(),n.getMinutes(),n.getSeconds()].map((v,i)=>i?String(v).padStart(2,"0"):v).join(":");
-  if(idx<0){$("cAct").textContent="予定なし";$("cAct").style.fontSize="30px";$("cRem").textContent="";$("cNext").textContent="";return;}
-  const it=items[idx],rem=Math.ceil(dur(it)-((min-it[2]+1440)%1440)),h=Math.floor(rem/60),m=rem%60;
-  $("cAct").textContent=it[0];$("cAct").style.fontSize=it[0].length>7?"21px":"30px";
-  $("cRem").textContent="あと "+(h?h+"時間":"")+m+"分（"+hm(it[3])+" まで）";
+  if(idx<0){$("cAct").textContent=T.none;$("cAct").style.fontSize=lang==="ja"?"30px":"22px";$("cRem").textContent="";$("cNext").textContent="";return;}
+  const it=items[idx],rem=Math.ceil(dur(it)-((min-it[2]+1440)%1440)),w=[...it[0]].reduce((a,ch)=>a+(ch.charCodeAt(0)<256?.55:1),0);
+  $("cAct").textContent=it[0];$("cAct").style.fontSize=w>10?"16px":w>7?"21px":"30px";
+  $("cRem").textContent=T.rem(Math.floor(rem/60),rem%60,hm(it[3]));
   const nx=items.find(x=>x[2]===it[3]%1440&&x!==it);
-  $("cNext").textContent=nx?"次は "+nx[0]:"";
+  $("cNext").textContent=nx?T.next(nx[0]):"";
 }
 function refresh(){curIdx=-2;tick();}
 
-/* ---- 編集 ---- */
+/* ---- 予定の編集 ---- */
 function addRow(it){
   const li=el("li");
-  const name=el("input",{type:"text",className:"name",value:it[0],placeholder:"行動（例：研究）"});name.setAttribute("aria-label","行動");
-  const del=el("button",{type:"button",className:"del",textContent:"削除"});
-  const cat=el("input",{type:"text",className:"cat",value:it[1],placeholder:"カテゴリ"});cat.setAttribute("list","cats");cat.setAttribute("aria-label","カテゴリ");
-  const s=el("input",{type:"time",className:"s",value:hm2(it[2])});s.setAttribute("aria-label","開始");
-  const e=el("input",{type:"time",className:"e",value:hm2(it[3])});e.setAttribute("aria-label","終了");
+  const name=el("input",{type:"text",className:"name",value:it[0],placeholder:T.phName});name.setAttribute("aria-label",T.aName);
+  const del=el("button",{type:"button",className:"del",textContent:T.del});
+  const cat=el("select",{className:"cat"});cat.setAttribute("aria-label",T.aCat);
+  cat.appendChild(el("option",{value:"",textContent:T.noCat}));
+  const names=cats.map(c=>c.name);if(it[1]&&!names.includes(it[1]))names.push(it[1]);
+  names.forEach(n=>cat.appendChild(el("option",{value:n,textContent:n})));cat.value=it[1]||"";
+  const s=el("input",{type:"time",className:"s",value:hm2(it[2])});s.setAttribute("aria-label",T.aStart);
+  const e=el("input",{type:"time",className:"e",value:hm2(it[3])});e.setAttribute("aria-label",T.aEnd);
   const times=el("div",{className:"times"});times.append(s,"〜",e,cat);
   del.addEventListener("click",()=>{li.remove();sumMsg();});
   li.append(name,del,times);$("editRows").appendChild(li);
   return name;
 }
 function readRows(){
-  return [...$("editRows").children].map(li=>[li.querySelector(".name").value.trim(),li.querySelector(".cat").value.trim(),
+  return [...$("editRows").children].map(li=>[li.querySelector(".name").value.trim(),li.querySelector(".cat").value,
     toMin(li.querySelector(".s").value),toMin(li.querySelector(".e").value)]);
 }
 function sumMsg(){
-  const rows=readRows().filter(r=>!isNaN(r[2])&&!isNaN(r[3]));
-  const tot=rows.reduce((a,r)=>a+dur(r),0),diff=tot-1440,f=m=>(Math.abs(m)/60).toFixed(1).replace(/\.0$/,"")+"時間";
-  $("emsg").textContent="合計 "+f(tot)+(diff===0?"（ちょうど24時間）":diff<0?"（"+f(diff)+" 未入力）":"（"+f(diff)+" 超過。重なりを確認）");
+  const tot=readRows().filter(r=>!isNaN(r[2])&&!isNaN(r[3])).reduce((a,r)=>a+dur(r),0);
+  $("emsg").textContent=T.total(tot,tot-1440);
 }
-function openEdit(){
-  $("editRows").innerHTML="";items.forEach(addRow);
-  const dl=$("cats");dl.innerHTML="";[...new Set(items.map(i=>i[1]).filter(Boolean))].forEach(c=>dl.appendChild(el("option",{value:c})));
-  $("viewPane").hidden=true;$("editPane").hidden=false;sumMsg();
-}
-function closeEdit(msg){$("editPane").hidden=true;$("viewPane").hidden=false;$("msg").textContent=msg||"";refresh();}
-$("edit").addEventListener("click",openEdit);
+function back(msg){show("viewPane");$("msg").textContent=msg||"";refresh();}
+$("edit").addEventListener("click",()=>{$("editRows").innerHTML="";items.forEach(addRow);show("editPane");sumMsg();});
 $("editRows").addEventListener("input",sumMsg);
 $("add").addEventListener("click",()=>{
   const rows=readRows(),last=rows[rows.length-1],s=last&&!isNaN(last[3])?last[3]:0;
@@ -191,43 +234,66 @@ $("add").addEventListener("click",()=>{
 });
 $("save").addEventListener("click",()=>{
   const rows=readRows();
-  if(!rows.length){$("emsg").textContent="予定を1件以上入力してください";return;}
+  if(!rows.length){$("emsg").textContent=T.needOne;return;}
   const bad=rows.findIndex(r=>!r[0]||isNaN(r[2])||isNaN(r[3]));
-  if(bad>=0){$("emsg").textContent=(bad+1)+"行目：行動名と開始・終了時刻を入力してください";return;}
-  items=rows.sort((a,b)=>a[2]-b[2]);store();closeEdit("保存しました");
+  if(bad>=0){$("emsg").textContent=T.badRow(bad+1);return;}
+  items=rows.sort((a,b)=>a[2]-b[2]);store();back(T.saved);
 });
-$("cancel").addEventListener("click",()=>closeEdit(""));
+$("cancel").addEventListener("click",()=>back(""));
 $("reset").addEventListener("click",()=>{
-  if(!confirm("編集内容を破棄して初期の予定に戻しますか？"))return;
-  items=DEFAULT.map(x=>[...x]);try{localStorage.removeItem(KEY);}catch(e){}closeEdit("初期の予定に戻しました");
+  if(!confirm(T.resetConfirm))return;
+  items=DEFAULT.map(x=>[...x]);cats=null;ensureCats();store();back(T.resetDone);
 });
+
+/* ---- 設定（言語・カテゴリ・色） ---- */
+function addCatRow(c,orig){
+  const li=el("li");li.dataset.orig=orig||"";
+  const col=el("input",{type:"color",value:c.color});col.setAttribute("aria-label",T.aColor);
+  const name=el("input",{type:"text",value:c.name,placeholder:T.phCat});name.setAttribute("aria-label",T.aCat);
+  const del=el("button",{type:"button",textContent:T.del});del.addEventListener("click",()=>li.remove());
+  li.append(col,name,del);$("catRows").appendChild(li);return name;
+}
+const readCats=()=>[...$("catRows").children].map(li=>({orig:li.dataset.orig,name:li.querySelector("input[type=text]").value.trim(),color:li.querySelector("input[type=color]").value}));
+$("openSet").addEventListener("click",()=>{
+  $("lang").value=lang;$("catRows").innerHTML="";cats.forEach(c=>addCatRow(c,c.name));$("smsg").textContent="";show("setPane");
+});
+$("addCat").addEventListener("click",()=>addCatRow({name:"",color:nextColor(readCats())},"").focus());
+$("saveSet").addEventListener("click",()=>{
+  const rows=readCats();
+  if(rows.some(r=>!r.name)){$("smsg").textContent=I18N[lang].catEmpty;return;}
+  if(new Set(rows.map(r=>r.name)).size!==rows.length){$("smsg").textContent=I18N[lang].catDup;return;}
+  const ren={};rows.forEach(r=>{if(r.orig&&r.orig!==r.name)ren[r.orig]=r.name;});
+  items.forEach(it=>{if(ren[it[1]])it[1]=ren[it[1]];});
+  cats=rows.map(r=>({name:r.name,color:r.color}));lang=$("lang").value;store();applyLang();back(T.saved);
+});
+$("cancelSet").addEventListener("click",()=>back(""));
 
 /* ---- Excel読み込み（オンライン時のみ） ---- */
 function loadXLSX(){
   return window.XLSX?Promise.resolve():new Promise((ok,ng)=>{
     const s=el("script",{src:"https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"});
-    s.onload=ok;s.onerror=()=>ng(new Error("オフラインのためExcel読み込みは使えません"));document.head.appendChild(s);});
+    s.onload=ok;s.onerror=()=>ng(new Error(T.offline));document.head.appendChild(s);});
 }
 function parse(buf){
   const wb=XLSX.read(buf,{type:"array"}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true});
-  const h=rows.findIndex(r=>r&&r[0]==="行動");if(h<0)throw new Error("「行動」の見出し行が見つかりません");
+  const h=rows.findIndex(r=>r&&r[0]==="行動");if(h<0)throw new Error(T.noHeader);
   const out=[],f=v=>Math.round((v%1)*1440)%1440;
   for(let i=h+1;i<rows.length;i++){
     const r=rows[i]||[];if(r[0]==="未入力"||r[0]==="合計")break;
     if(!r[0]||typeof r[2]!=="number"||typeof r[3]!=="number")continue;
     out.push([String(r[0]),r[1]?String(r[1]):"",f(r[2]),f(r[3])]);
   }
-  if(!out.length)throw new Error("予定が1件も読み取れませんでした");
+  if(!out.length)throw new Error(T.noRows);
   return out;
 }
 $("file").addEventListener("change",async e=>{
   const f=e.target.files[0];if(!f)return;
-  try{await loadXLSX();items=parse(new Uint8Array(await f.arrayBuffer()));store();$("msg").textContent=items.length+"件の予定を読み込みました";}
-  catch(err){$("msg").textContent="読み込めませんでした：".concat(err.message);}
+  try{await loadXLSX();items=parse(new Uint8Array(await f.arrayBuffer()));ensureCats();store();$("msg").textContent=T.imported(items.length);}
+  catch(err){$("msg").textContent=T.importFail.concat(err.message);}
   e.target.value="";refresh();
 });
 
-drawTicks();tick();setInterval(tick,1000);
+applyLang();drawTicks();tick();setInterval(tick,1000);
 if("serviceWorker" in navigator&&location.protocol!=="file:")navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
